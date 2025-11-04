@@ -6,7 +6,7 @@ from groq import Groq # Seulement Groq !
 from server import keep_alive
 import asyncio 
 
-# Lance le serveur web factice
+# Lance le serveur web factice pour maintenir le bot en vie
 keep_alive() 
 
 # --- Configurations Clés & Clés API ---
@@ -29,7 +29,8 @@ SYSTEM_PROMPT = (
 # Initialisation du client Groq
 try:
     client_groq = Groq(api_key=GROQ_API_KEY)
-    MODEL_GROQ = "mixtral-8x7b-32768" # Le modèle rapide de Groq
+    # Changement pour le modèle plus léger afin d'améliorer la stabilité de la connexion Render/Discord
+    MODEL_GROQ = "llama2-70b-4096" 
 except Exception as e:
     print(f"ERREUR lors de l'initialisation du Client Groq: {e}")
     exit()
@@ -76,7 +77,7 @@ async def demande_ia(interaction: discord.Interaction, question: str):
         await interaction.followup.send(f"{interaction.user.mention} Désolé, le service IA est momentanément indisponible. Veuillez réessayer plus tard.")
 
 
-# --- NOUVELLES COMMANDES FUN ---
+# --- Commandes Fun ---
 
 @tree.command(name='mordre', description='Mords un utilisateur pour le taquiner ! 😈')
 @app_commands.describe(utilisateur='La personne à mordre.')
@@ -113,8 +114,7 @@ async def patpat(interaction: discord.Interaction, utilisateur: discord.Member):
     else:
         await interaction.response.send_message(f"**{interaction.user.display_name}** donne un **patpat** 🥺 à **{utilisateur.display_name}** pour le féliciter.")
 
-# --- FIN NOUVELLES COMMANDES FUN ---
-
+# --- Commandes Utilitaire et Modération ---
 
 @tree.command(name='ping', description='Vérifie si le bot est en ligne et affiche sa latence.')
 async def ping(interaction: discord.Interaction):
@@ -131,56 +131,4 @@ async def nettoyer(interaction: discord.Interaction, nombre: app_commands.Range[
     
     deleted = await interaction.channel.purge(limit=nombre)
     
-    await interaction.response.send_message(f'{len(deleted)} messages nettoyés par Yuki. ✨', ephemeral=True, delete_after=5)
-
-
-@tree.command(name='sondage', description='Crée un sondage simple avec des réactions de vote.')
-@app_commands.describe(question='La question à poser pour le sondage.', option1='Première option.', option2='Deuxième option.', option3='Troisième option (optionnel)', option4='Quatrième option (optionnel)')
-async def sondage(interaction: discord.Interaction, question: str, option1: str, option2: str, option3: str = None, option4: str = None):
-    """Commande slash /sondage pour créer un vote."""
-    
-    options = [opt for opt in [option1, option2, option3, option4] if opt is not None]
-    
-    embed = discord.Embed(
-        title=f"🗳️ Sondage : {question}",
-        color=discord.Color.blue(),
-        description="\n".join([f"{i}. {option}" for i, option in enumerate(options, 1)])
-    )
-    embed.set_footer(text=f"Sondage créé par {interaction.user.display_name}")
-
-    await interaction.response.send_message(embed=embed)
-    
-    poll_message_obj = await interaction.original_response()
-
-    emoji_numbers = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
-    for i in range(len(options)):
-        await poll_message_obj.add_reaction(emoji_numbers[i])
-
-
-# --- Synchronisation et Événements ---
-
-@bot.event
-async def on_ready():
-    """Confirme que le bot est connecté à Discord et synchronise les commandes."""
-    print(f'🤖 Yuki est en ligne! Connecté en tant que {bot.user}')
-    
-    try:
-        await tree.sync()
-        print("🎉 Commandes Slash synchronisées avec succès!")
-    except Exception as e:
-        print(f"Erreur lors de la synchronisation des commandes slash: {e}")
-
-    await bot.change_presence(activity=discord.Activity(
-        type=discord.ActivityType.listening, name="/demande (Ultra Rapide)"))
-
-
-@bot.event
-async def on_message(message):
-    await bot.process_commands(message)
-
-# --- Lancement du bot ---
-if __name__ == '__main__':
-    try:
-        bot.run(DISCORD_TOKEN)
-    except Exception as e:
-        print(f"ERREUR Critique: Impossible de lancer le bot. Détails: {e}")
+    await interaction.response.send_message(f'{
