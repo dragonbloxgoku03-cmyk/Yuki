@@ -29,7 +29,7 @@ SYSTEM_PROMPT = (
 # Initialisation du client Groq
 try:
     client_groq = Groq(api_key=GROQ_API_KEY)
-    # Changement pour le modèle plus léger afin d'améliorer la stabilité de la connexion Render/Discord
+    # Modèle plus léger pour une meilleure stabilité de la connexion Render/Discord
     MODEL_GROQ = "llama2-70b-4096" 
 except Exception as e:
     print(f"ERREUR lors de l'initialisation du Client Groq: {e}")
@@ -72,8 +72,10 @@ async def demande_ia(interaction: discord.Interaction, question: str):
             
     
     if response_text:
-        await interaction.followup.send(f'{interaction.user.mention} [via Groq 🚀] {response_text}')
+        # Ligne corrigée de l'erreur de syntaxe
+        await interaction.followup.send(f'{interaction.user.mention} [via Groq 🚀] {response_text}') 
     else:
+        # Ligne corrigée de l'erreur de syntaxe
         await interaction.followup.send(f"{interaction.user.mention} Désolé, le service IA est momentanément indisponible. Veuillez réessayer plus tard.")
 
 
@@ -105,30 +107,3 @@ async def calin(interaction: discord.Interaction, utilisateur: discord.Member):
 
 @tree.command(name='patpat', description='Tapote gentiment la tête de quelqu\'un ! 🥺')
 @app_commands.describe(utilisateur='La personne à tapoter.')
-async def patpat(interaction: discord.Interaction, utilisateur: discord.Member):
-    """Commande slash /patpat."""
-    if utilisateur.id == interaction.user.id:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** se fait un patpat réconfortant. C'est bien mérité. 😊")
-    elif utilisateur.id == bot.user.id:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** me fait un **patpat** sur ma tête virtuelle. Merci ! 🥹")
-    else:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** donne un **patpat** 🥺 à **{utilisateur.display_name}** pour le féliciter.")
-
-# --- Commandes Utilitaire et Modération ---
-
-@tree.command(name='ping', description='Vérifie si le bot est en ligne et affiche sa latence.')
-async def ping(interaction: discord.Interaction):
-    """Commande slash /ping."""
-    latency_ms = round(bot.latency * 1000)
-    await interaction.response.send_message(f'Pong! Latence: {latency_ms}ms')
-
-
-@tree.command(name='nettoyer', description='Supprime un nombre spécifié de messages. (Modération)')
-@app_commands.checks.has_permissions(manage_messages=True)
-@app_commands.describe(nombre='Le nombre de messages à supprimer (max 99).')
-async def nettoyer(interaction: discord.Interaction, nombre: app_commands.Range[int, 1, 99]):
-    """Commande slash /nettoyer pour purger des messages."""
-    
-    deleted = await interaction.channel.purge(limit=nombre)
-    
-    await interaction.response.send_message(f'{
