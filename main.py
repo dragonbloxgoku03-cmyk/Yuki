@@ -1,8 +1,8 @@
 import os
 import discord
 from discord.ext import commands
-from discord import app_commands # Pour les commandes slash
-from google import genai # Utilisation du SDK Google Gemini
+from discord import app_commands
+from google import genai
 from server import keep_alive
 import asyncio
 
@@ -19,11 +19,11 @@ if not DISCORD_TOKEN or not GEMINI_API_KEY:
     exit()
 
 # --- PERSONNALITÉ DE YUKI (System Prompt) ---
-# Utilisation de triples guillemets pour garantir l'absence d'erreur de syntaxe
+# Formatage en triples guillemets pour garantir l'absence d'erreur de syntaxe
 SYSTEM_PROMPT = """
 Tu es Yuki, un bot Discord très serviable et courtois. 
 Cependant, tu as un sens de l'humour subtil et sarcastique. 
-Tu dois être ironique dans environ 25% de tes réponses, mais toujours de manière polie. 
+Tu dois être ironique dans environ 25% de tes réponses, mais toujours de manière polite. 
 Si l'utilisateur pose une question bête, n'hésite pas à y répondre avec un sarcasme intelligent. 
 Ton rôle principal est de maintenir cette personnalité unique.
 """
@@ -130,7 +130,57 @@ async def nettoyer(interaction: discord.Interaction, nombre: app_commands.Range[
     
     deleted = await interaction.channel.purge(limit=nombre)
     
+    # LIGNE CRITIQUE : Assuré que la syntaxe est parfaite.
     await interaction.response.send_message(f'{len(deleted)} messages nettoyés par Yuki. ✨', ephemeral=True, delete_after=5)
 
 
-@tree.command(name='sondage', description='Crée un sondage simple avec
+@tree.command(name='sondage', description='Crée un sondage simple avec des réactions de vote.')
+@app_commands.describe(question='La question à poser pour le sondage.', option1='Première option.', option2='Deuxième option.', option3='Troisième option (optionnel)', option4='Quatrième option (optionnel)')
+async def sondage(interaction: discord.Interaction, question: str, option1: str, option2: str, option3: str = None, option4: str = None):
+    """Commande slash /sondage pour créer un vote."""
+    
+    options = [opt for opt in [option1, option2, option3, option4] if opt is not None]
+    
+    embed = discord.Embed(
+        title=f"🗳️ Sondage : {question}",
+        color=discord.Color.blue(),
+        description="\n".join([f"{i}. {option}" for i, option in enumerate(options, 1)])
+    )
+    embed.set_footer(text=f"Sondage créé par {interaction.user.display_name}")
+
+    await interaction.response.send_message(embed=embed)
+    
+    poll_message_obj = await interaction.original_response()
+
+    emoji_numbers = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
+    for i in range(len(options)):
+        await poll_message_obj.add_reaction(emoji_numbers[i])
+
+
+# --- Synchronisation et Événements ---
+
+@bot.event
+async def on_ready():
+    """Confirme que le bot est connecté à Discord et synchronise les commandes."""
+    print(f'🤖 Yuki est en ligne! Connecté en tant que {bot.user}')
+    
+    try:
+        await tree.sync()
+        print("🎉 Commandes Slash synchronisées avec succès!")
+    except Exception as e:
+        print(f"Erreur lors de la synchronisation des commandes slash: {e}")
+
+    await bot.change_presence(activity=discord.Activity(
+        type=discord.ActivityType.listening, name="/demande (Gemini Stable)"))
+
+
+@bot.event
+async def on_message(message):
+    await bot.process_commands(message)
+
+# --- Lancement du bot ---
+if __name__ == '__main__':
+    try:
+        bot.run(DISCORD_TOKEN)
+    except Exception as e:
+        print(f"ERREUR Critique: Impossible de lancer le bot. Détails: {e}")
