@@ -10,7 +10,7 @@ import asyncio
 keep_alive()
 
 # --- Configurations Clés & Clés API ---
-# CORRECTION CRITIQUE : Cherche la clé Discord sous le nom "TOKEN"
+# Cherche la clé Discord sous le nom "TOKEN" sur Render
 DISCORD_TOKEN = os.getenv('TOKEN') 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
@@ -19,18 +19,18 @@ if not DISCORD_TOKEN or not GEMINI_API_KEY:
     exit()
 
 # --- PERSONNALITÉ DE YUKI (System Prompt) ---
-SYSTEM_PROMPT = (
-    "Tu es Yuki, un bot Discord très serviable et courtois. "
-    "Cependant, tu as un sens de l'humour subtil et sarcastique. "
-    "Tu dois être ironique dans environ 25% de tes réponses, mais toujours de manière polie. "
-    "Si l'utilisateur pose une question bête, n'hésite pas à y répondre avec un sarcasme intelligent. "
-    "Ton rôle principal est de maintenir cette personnalité unique."
-)
+# Utilisation de triples guillemets pour garantir l'absence d'erreur de syntaxe
+SYSTEM_PROMPT = """
+Tu es Yuki, un bot Discord très serviable et courtois. 
+Cependant, tu as un sens de l'humour subtil et sarcastique. 
+Tu dois être ironique dans environ 25% de tes réponses, mais toujours de manière polie. 
+Si l'utilisateur pose une question bête, n'hésite pas à y répondre avec un sarcasme intelligent. 
+Ton rôle principal est de maintenir cette personnalité unique.
+"""
 
 # Initialisation du client Gemini
 try:
     client_gemini = genai.Client(api_key=GEMINI_API_KEY)
-    # Modèle rapide et stable
     MODEL_GEMINI = "gemini-2.5-flash" 
 except Exception as e:
     print(f"ERREUR lors de l'initialisation du Client Gemini: {e}")
@@ -58,4 +58,79 @@ async def call_ia(content):
 # --- COMMANDES SLASH (app_commands.command) ---
 
 @tree.command(name='demande', description='Pose une question à Yuki (IA) pour obtenir une réponse.')
-@app_commands.describe(question='Votre question ou
+@app_commands.describe(question='Votre question ou requête pour Yuki.')
+async def demande_ia(interaction: discord.Interaction, question: str):
+    """Commande slash /demande pour l'IA (Gemini seulement)."""
+
+    await interaction.response.defer()
+
+    response_text = None
+
+    try:
+        response_text = await call_ia(question)
+    except Exception as e:
+        print(f"Échec Gemini: {e}.")
+
+    if response_text:
+        await interaction.followup.send(f'{interaction.user.mention} [via Gemini 💎] {response_text}')
+    else:
+        await interaction.followup.send(f"{interaction.user.mention} Désolé, le service IA est momentanément indisponible. Veuillez réessayer plus tard.")
+
+# --- Commandes Fun (Syntaxe Corrigée) ---
+
+@tree.command(name='mordre', description='Mords un utilisateur pour le taquiner ! 😈')
+@app_commands.describe(utilisateur='La personne à mordre.')
+async def mordre(interaction: discord.Interaction, utilisateur: discord.Member):
+    """Commande slash /mordre."""
+    if utilisateur.id == interaction.user.id:
+        await interaction.response.send_message(f"**{interaction.user.display_name}** s'est mordu lui-même ! Aïe ! 😬")
+    elif utilisateur.id == bot.user.id:
+        await interaction.response.send_message(f"**{interaction.user.display_name}** a tenté de me mordre... Désolé, je suis en métal. 🤖")
+    else:
+        await interaction.response.send_message(f"**{interaction.user.display_name}** mord 😬 **{utilisateur.display_name}** ! Miam !")
+
+
+@tree.command(name='calin', description='Fais un gros câlin à quelqu\'un ! 🤗')
+@app_commands.describe(utilisateur='La personne à câliner.')
+async def calin(interaction: discord.Interaction, utilisateur: discord.Member):
+    """Commande slash /calin."""
+    if utilisateur.id == interaction.user.id:
+        await interaction.response.send_message(f"**{interaction.user.display_name}** se fait un énorme auto-câlin. Prend soin de toi ! 🥰")
+    elif utilisateur.id == bot.user.id:
+        await interaction.response.send_message(f"**{interaction.user.display_name}** m'offre un câlin ! J'apprécie, humain. 💖")
+    else:
+        await interaction.response.send_message(f"**{interaction.user.display_name}** fait un gros câlin 🤗 à **{utilisateur.display_name}** ! Quelle douceur.")
+
+
+@tree.command(name='patpat', description='Tapote gentiment la tête de quelqu\'un ! 🥺')
+@app_commands.describe(utilisateur='La personne à tapoter.')
+async def patpat(interaction: discord.Interaction, utilisateur: discord.Member):
+    """Commande slash /patpat."""
+    if utilisateur.id == interaction.user.id:
+        await interaction.response.send_message(f"**{interaction.user.display_name}** se fait un patpat réconfortant. C'est bien mérité. 😊")
+    elif utilisateur.id == bot.user.id:
+        await interaction.response.send_message(f"**{interaction.user.display_name}** me fait un **patpat** sur ma tête virtuelle. Merci ! 🥹")
+    else:
+        await interaction.response.send_message(f"**{interaction.user.display_name}** donne un **patpat** 🥺 à **{utilisateur.display_name}** pour le féliciter.")
+
+# --- Commandes Utilitaire et Modération ---
+
+@tree.command(name='ping', description='Vérifie si le bot est en ligne et affiche sa latence.')
+async def ping(interaction: discord.Interaction):
+    """Commande slash /ping."""
+    latency_ms = round(bot.latency * 1000)
+    await interaction.response.send_message(f'Pong! Latence: {latency_ms}ms')
+
+
+@tree.command(name='nettoyer', description='Supprime un nombre spécifié de messages. (Modération)')
+@app_commands.checks.has_permissions(manage_messages=True)
+@app_commands.describe(nombre='Le nombre de messages à supprimer (max 99).')
+async def nettoyer(interaction: discord.Interaction, nombre: app_commands.Range[int, 1, 99]):
+    """Commande slash /nettoyer pour purger des messages."""
+    
+    deleted = await interaction.channel.purge(limit=nombre)
+    
+    await interaction.response.send_message(f'{len(deleted)} messages nettoyés par Yuki. ✨', ephemeral=True, delete_after=5)
+
+
+@tree.command(name='sondage', description='Crée un sondage simple avec
