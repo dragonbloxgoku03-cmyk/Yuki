@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 import os
 import json 
+import re # Ajout de l'outil de Regex pour un nettoyage de texte plus fiable
 
 # UTILISATION DE os.environ.get() pour une lecture plus fiable sur Render
 DISCORD_TOKEN = os.environ.get("TOKEN")
@@ -55,46 +56,47 @@ async def on_ready():
         print(f"❌ Erreur de synchronisation des commandes: {e}")
 
 
-# --- COMMANDES SLASH ---
+# --- COMMANDES SLASH (AVEC RÉPONSE PUBLIQUE) ---
 
 @bot.tree.command(name='apprendre', description='Apprend une nouvelle phrase ou réponse au bot (Nécessite Gérer les messages).')
 @app_commands.describe(question='La phrase ou question à retenir.', reponse='La réponse que Yuki doit donner.')
 @app_commands.checks.has_permissions(manage_messages=True) 
 async def apprendre_slash(interaction: discord.Interaction, question: str, reponse: str):
-    await interaction.response.defer(ephemeral=True)
-
+    
     memoire = charger_memoire()
+    # La clé est toujours en minuscules
     question_cle = question.lower().strip()
     memoire[question_cle] = reponse
 
     sauvegarder_memoire(memoire)
     
-    await interaction.followup.send(
+    # Correction: réponse publique (ephemeral=False)
+    await interaction.response.send_message(
         f"✅ J'ai retenu la leçon suivante :\n"
         f"**Question/Clé** : `{question}`\n"
         f"**Réponse** : `{reponse}`\n",
-        ephemeral=True
+        ephemeral=False # <--- CORRECTION 1: RENDU PUBLIC
     )
 
 
 @bot.tree.command(name='monnom', description='Permet à Yuki de retenir votre nom.')
 @app_commands.describe(nom='Votre prénom ou le nom par lequel vous voulez que Yuki vous appelle.')
 async def monnom_slash(interaction: discord.Interaction, nom: str):
-    await interaction.response.defer(ephemeral=True)
-
+    
     profils = charger_profils()
     user_id = str(interaction.user.id)
     profils[user_id] = nom.strip()
 
     sauvegarder_profils(profils)
     
-    await interaction.followup.send(
+    # Correction: réponse publique (ephemeral=False)
+    await interaction.response.send_message(
         f"✅ Entendu, **{nom.strip()}**. Je m'en souviendrai. Je ne vous appellerai plus 'cher humain'.",
-        ephemeral=True
+        ephemeral=False # <--- CORRECTION 1: RENDU PUBLIC
     )
 
 
-# --- GESTION DES MESSAGES ---
+# --- GESTION DES MESSAGES (RÉPONSES AUTOMATIQUES PAR MÉMOIRE) ---
 
 @bot.event
 async def on_message(message):
@@ -102,6 +104,7 @@ async def on_message(message):
     if message.author.bot:
         return
     
+    # Ne répondre que si le bot est mentionné ou que 'yuki' est dans le message
     if bot.user.mentioned_in(message) or "yuki" in message.content.lower():
         
         question = message.content 
@@ -113,7 +116,22 @@ async def on_message(message):
         # 2. VÉRIFICATION DE LA MÉMOIRE INTERNE (Q/R)
         memoire = charger_memoire()
         
-        question_cle = question.lower().strip().replace(f'@{bot.user.display_name.lower()}', '').strip()
+        # --- CORRECTION 2: LOGIQUE DE NETTOYAGE SIMPLIFIÉE ET STABILISÉE ---
+        
+        question_cle = question.lower().strip()
+        
+        # Enlève la mention du bot ou le nom 'yuki' au début du message
+        if bot.user.mentioned_in(message):
+            mention_pattern = re.escape(bot.user.mention.lower())
+            question_cle = re.sub(r'^' + mention_pattern, '', question_cle).strip()
+        
+        elif question_cle.startswith("yuki"):
+            question_cle = re.sub(r'^yuki', '', question_cle).strip()
+            
+        # Nettoie les caractères de ponctuation finaux pour une meilleure correspondance
+        question_cle = question_cle.strip('?!.,').strip()
+        
+        # ---------------------------------------------------------------------
 
         if question_cle in memoire:
             # L'IA interne a la réponse !
@@ -122,7 +140,7 @@ async def on_message(message):
             await message.channel.send(f'{message.author.mention} {response_text}') 
             return 
 
-        # Si aucune réponse n'est trouvée
+        # Si aucune réponse n'est trouvée (le cas qui posait problème)
         else:
             if user_name != "cher humain":
                  reponse_inconnue = f"Je suis désolée {user_name}, je n'ai pas la réponse à cela dans ma mémoire. Vous pouvez me l'apprendre avec `/apprendre`."
@@ -134,7 +152,7 @@ async def on_message(message):
             
     await bot.process_commands(message)
 
-# --- LANCEMENT DU BOT ---
-# Le bot.run est désactivé ici. Il est appelé par server.py.
+# --- LANCEMENT DU BOT (DÉCLENCHÉ PAR server.py) ---
+
 if DISCORD_TOKEN is None:
     print("❌ AVERTISSEMENT: La clé 'TOKEN' (Discord) n'a pas été trouvée lors de l'importation de main.py.")
