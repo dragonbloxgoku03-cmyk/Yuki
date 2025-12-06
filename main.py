@@ -2,15 +2,14 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
-import json # Nécessaire pour les fichiers de mémoire
-# NOTE: python-dotenv n'est plus nécessaire si on n'utilise pas un fichier .env local
+import json 
+# NOTE: python-dotenv n'est plus nécessaire
 
-# Le Token Discord est lu directement par Render via la variable TOKEN
+# Le Token Discord est lu directement par Render via la variable d'environnement 'TOKEN'
 DISCORD_TOKEN = os.getenv("TOKEN")
 
 # Configuration du bot
 intents = discord.Intents.default()
-# intents.message_content est nécessaire pour lire le contenu des messages
 intents.message_content = True 
 
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -19,7 +18,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 def sauvegarder_memoire(memoire):
     """Sauvegarde le dictionnaire de mémoire dans le fichier memoire.json."""
-    # Le mode 'w' (write) écrase le contenu, mais c'est normal pour un fichier JSON
     with open('memoire.json', 'w', encoding='utf-8') as f:
         json.dump(memoire, f, indent=4)
 
@@ -63,13 +61,12 @@ async def on_ready():
 @bot.tree.command(name='dire', description='Fait dire au bot un message.')
 @app_commands.describe(message='Le message que vous voulez que Yuki dise.')
 async def dire_slash(interaction: discord.Interaction, message: str):
-    # Envoie le message sans le mentionner, pour que cela ressemble à Yuki qui parle
     await interaction.response.send_message(f"{message}", ephemeral=False)
 
 
 @bot.tree.command(name='apprendre', description='Apprend une nouvelle phrase ou réponse au bot (Nécessite Gérer les messages).')
 @app_commands.describe(question='La phrase ou question à retenir.', reponse='La réponse que Yuki doit donner.')
-@app_commands.checks.has_permissions(manage_messages=True)
+@app_commands.checks.has_permissions(manage_messages=True) # Seuls les modérateurs peuvent apprendre
 async def apprendre_slash(interaction: discord.Interaction, question: str, reponse: str):
     await interaction.response.defer(ephemeral=True)
 
@@ -127,11 +124,12 @@ async def on_message(message):
         memoire = charger_memoire()
         
         # Nettoie la question pour la recherche (supprime la mention du bot)
+        # Remplace le nom de l'utilisateur par une version générique pour que la recherche dans la mémoire fonctionne
         question_cle = question.lower().strip().replace(f'@{bot.user.display_name.lower()}', '').strip()
 
         if question_cle in memoire:
             # L'IA interne a la réponse !
-            # Remplace la mention générique par le nom réel de l'utilisateur
+            # Remplace la mention générique dans la réponse par le nom réel de l'utilisateur
             response_text = memoire[question_cle].replace("cher humain", user_name) 
             
             await message.channel.send(f'{message.author.mention} {response_text}') 
@@ -152,10 +150,9 @@ async def on_message(message):
 
 # --- LANCEMENT DU BOT ---
 
-if DISCORD_TOKEN:
-    # Le bot.run() doit être le dernier appel dans main.py
-    # NOTE: Render n'exécute PAS directement main.py, il exécute server.py
-    # Ce bot.run est nécessaire si vous voulez le tester seul.
-    pass # On laisse le lancement se faire via server.py / gunicorn
-else:
-    print("❌ ERREUR: La clé 'TOKEN' (Discord) n'a pas été trouvée.")
+# NOTE IMPORTANTE : Nous utilisons 'pass' ici. 
+# Le bot sera réellement lancé par la fonction run() de server.py, 
+# ce qui est essentiel pour le déploiement Render.
+
+if DISCORD_TOKEN is None:
+    print("❌ AVERTISSEMENT: La clé 'TOKEN' (Discord) n'a pas été trouvée lors de l'importation.")
