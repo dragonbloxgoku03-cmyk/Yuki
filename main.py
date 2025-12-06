@@ -3,10 +3,9 @@ from discord import app_commands
 from discord.ext import commands
 import os
 import json 
-# NOTE: python-dotenv n'est plus nécessaire
 
-# Le Token Discord est lu directement par Render via la variable d'environnement 'TOKEN'
-DISCORD_TOKEN = os.getenv("TOKEN")
+# UTILISATION DE os.environ.get() pour une lecture plus fiable sur Render
+DISCORD_TOKEN = os.environ.get("TOKEN")
 
 # Configuration du bot
 intents = discord.Intents.default()
@@ -27,7 +26,7 @@ def charger_memoire():
         with open('memoire.json', 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return {} # Retourne une mémoire vide si le fichier est manquant/corrompu
+        return {} 
 
 def sauvegarder_profils(profils):
     """Sauvegarde le dictionnaire des profils utilisateur dans le fichier user_profiles.json."""
@@ -40,7 +39,7 @@ def charger_profils():
         with open('user_profiles.json', 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return {} # Retourne un dictionnaire vide si le fichier est manquant/corrompu
+        return {} 
 
 # --- ÉVÉNEMENTS DU BOT ---
 
@@ -48,7 +47,7 @@ def charger_profils():
 async def on_ready():
     print(f'🤖 Yuki est en ligne! Connecté en tant que {bot.user}')
     
-    # Synchronisation des commandes slash (très important!)
+    # Synchronisation des commandes slash
     try:
         synced = await bot.tree.sync()
         print(f"✅ {len(synced)} commandes synchronisées.")
@@ -56,22 +55,15 @@ async def on_ready():
         print(f"❌ Erreur de synchronisation des commandes: {e}")
 
 
-# --- COMMANDES SLASH POUR L'APPRENTISSAGE ---
-
-@bot.tree.command(name='dire', description='Fait dire au bot un message.')
-@app_commands.describe(message='Le message que vous voulez que Yuki dise.')
-async def dire_slash(interaction: discord.Interaction, message: str):
-    await interaction.response.send_message(f"{message}", ephemeral=False)
-
+# --- COMMANDES SLASH ---
 
 @bot.tree.command(name='apprendre', description='Apprend une nouvelle phrase ou réponse au bot (Nécessite Gérer les messages).')
 @app_commands.describe(question='La phrase ou question à retenir.', reponse='La réponse que Yuki doit donner.')
-@app_commands.checks.has_permissions(manage_messages=True) # Seuls les modérateurs peuvent apprendre
+@app_commands.checks.has_permissions(manage_messages=True) 
 async def apprendre_slash(interaction: discord.Interaction, question: str, reponse: str):
     await interaction.response.defer(ephemeral=True)
 
     memoire = charger_memoire()
-    # La clé est toujours en minuscules
     question_cle = question.lower().strip()
     memoire[question_cle] = reponse
 
@@ -102,7 +94,7 @@ async def monnom_slash(interaction: discord.Interaction, nom: str):
     )
 
 
-# --- GESTION DES MESSAGES (RÉPONSES AUTOMATIQUES PAR MÉMOIRE) ---
+# --- GESTION DES MESSAGES ---
 
 @bot.event
 async def on_message(message):
@@ -110,34 +102,28 @@ async def on_message(message):
     if message.author.bot:
         return
     
-    # Le bot répond s'il est mentionné ou si son nom "yuki" est dans le message
     if bot.user.mentioned_in(message) or "yuki" in message.content.lower():
         
         question = message.content 
         
         # 1. VÉRIFICATION DU PROFIL UTILISATEUR
         profils = charger_profils()
-        # Récupère le nom, ou utilise "cher humain" par défaut si inconnu
         user_name = profils.get(str(message.author.id), "cher humain") 
 
         # 2. VÉRIFICATION DE LA MÉMOIRE INTERNE (Q/R)
         memoire = charger_memoire()
         
-        # Nettoie la question pour la recherche (supprime la mention du bot)
-        # Remplace le nom de l'utilisateur par une version générique pour que la recherche dans la mémoire fonctionne
         question_cle = question.lower().strip().replace(f'@{bot.user.display_name.lower()}', '').strip()
 
         if question_cle in memoire:
             # L'IA interne a la réponse !
-            # Remplace la mention générique dans la réponse par le nom réel de l'utilisateur
             response_text = memoire[question_cle].replace("cher humain", user_name) 
             
             await message.channel.send(f'{message.author.mention} {response_text}') 
-            return # Le bot a répondu, on arrête ici
+            return 
 
-        # Si aucune réponse n'est trouvée dans la mémoire interne
+        # Si aucune réponse n'est trouvée
         else:
-            # Réponse polie pour indiquer qu'on ne sait pas
             if user_name != "cher humain":
                  reponse_inconnue = f"Je suis désolée {user_name}, je n'ai pas la réponse à cela dans ma mémoire. Vous pouvez me l'apprendre avec `/apprendre`."
             else:
@@ -149,10 +135,6 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # --- LANCEMENT DU BOT ---
-
-# NOTE IMPORTANTE : Nous utilisons 'pass' ici. 
-# Le bot sera réellement lancé par la fonction run() de server.py, 
-# ce qui est essentiel pour le déploiement Render.
-
+# Le bot.run est désactivé ici. Il est appelé par server.py.
 if DISCORD_TOKEN is None:
-    print("❌ AVERTISSEMENT: La clé 'TOKEN' (Discord) n'a pas été trouvée lors de l'importation.")
+    print("❌ AVERTISSEMENT: La clé 'TOKEN' (Discord) n'a pas été trouvée lors de l'importation de main.py.")
