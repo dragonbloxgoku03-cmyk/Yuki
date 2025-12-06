@@ -1,186 +1,161 @@
-import os
 import discord
-from discord.ext import commands
 from discord import app_commands
-from google import genai
-from server import keep_alive
-import asyncio
+from discord.ext import commands
+import os
+import json # Nécessaire pour les fichiers de mémoire
+# NOTE: python-dotenv n'est plus nécessaire si on n'utilise pas un fichier .env local
 
-# Lance le serveur web factice pour maintenir le bot en vie
-keep_alive()
+# Le Token Discord est lu directement par Render via la variable TOKEN
+DISCORD_TOKEN = os.getenv("TOKEN")
 
-# --- Configurations Clés & Clés API ---
-# Cherche la clé Discord sous le nom "TOKEN" sur Render
-DISCORD_TOKEN = os.getenv('TOKEN') 
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-
-if not DISCORD_TOKEN or not GEMINI_API_KEY:
-    print("ERREUR: Une clé API (Discord ou Gemini) est manquante. Le bot ne démarrera pas.")
-    exit()
-
-# --- PERSONNALITÉ DE YUKI (System Prompt) ---
-# Formatage en triples guillemets pour garantir l'absence d'erreur de syntaxe
-SYSTEM_PROMPT = """
-Tu es Yuki, un bot Discord très serviable et courtois. 
-Cependant, tu as un sens de l'humour subtil et sarcastique. 
-Tu dois être ironique dans environ 25% de tes réponses, mais toujours de manière polite. 
-Si l'utilisateur pose une question bête, n'hésite pas à y répondre avec un sarcasme intelligent. 
-Ton rôle principal est de maintenir cette personnalité unique.
-"""
-
-# Initialisation du client Gemini
-try:
-    client_gemini = genai.Client(api_key=GEMINI_API_KEY)
-    MODEL_GEMINI = "gemini-2.5-flash" 
-except Exception as e:
-    print(f"ERREUR lors de l'initialisation du Client Gemini: {e}")
-    exit()
-
-# Configuration du bot Discord
+# Configuration du bot
 intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
-tree = app_commands.CommandTree(bot)
+# intents.message_content est nécessaire pour lire le contenu des messages
+intents.message_content = True 
 
-# --- Fonction d'Appel d'IA ---
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-async def call_ia(content):
-    """Appelle Gemini avec le System Prompt."""
-    response = await client_gemini.models.generate_content_async(
-        model=MODEL_GEMINI,
-        contents=content,
-        config=genai.types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT
-        )
-    )
-    return response.text
+# --- FONCTIONS POUR LA GESTION DES FICHIERS DE MÉMOIRE ---
 
-# --- COMMANDES SLASH (app_commands.command) ---
+def sauvegarder_memoire(memoire):
+    """Sauvegarde le dictionnaire de mémoire dans le fichier memoire.json."""
+    # Le mode 'w' (write) écrase le contenu, mais c'est normal pour un fichier JSON
+    with open('memoire.json', 'w', encoding='utf-8') as f:
+        json.dump(memoire, f, indent=4)
 
-@tree.command(name='demande', description='Pose une question à Yuki (IA) pour obtenir une réponse.')
-@app_commands.describe(question='Votre question ou requête pour Yuki.')
-async def demande_ia(interaction: discord.Interaction, question: str):
-    """Commande slash /demande pour l'IA (Gemini seulement)."""
-
-    await interaction.response.defer()
-
-    response_text = None
-
+def charger_memoire():
+    """Charge le dictionnaire de mémoire depuis le fichier memoire.json."""
     try:
-        response_text = await call_ia(question)
-    except Exception as e:
-        print(f"Échec Gemini: {e}.")
+        with open('memoire.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {} # Retourne une mémoire vide si le fichier est manquant/corrompu
 
-    if response_text:
-        await interaction.followup.send(f'{interaction.user.mention} [via Gemini 💎] {response_text}')
-    else:
-        await interaction.followup.send(f"{interaction.user.mention} Désolé, le service IA est momentanément indisponible. Veuillez réessayer plus tard.")
+def sauvegarder_profils(profils):
+    """Sauvegarde le dictionnaire des profils utilisateur dans le fichier user_profiles.json."""
+    with open('user_profiles.json', 'w', encoding='utf-8') as f:
+        json.dump(profils, f, indent=4)
 
-# --- Commandes Fun (Syntaxe Corrigée) ---
+def charger_profils():
+    """Charge le dictionnaire des profils utilisateur depuis le fichier user_profiles.json."""
+    try:
+        with open('user_profiles.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {} # Retourne un dictionnaire vide si le fichier est manquant/corrompu
 
-@tree.command(name='mordre', description='Mords un utilisateur pour le taquiner ! 😈')
-@app_commands.describe(utilisateur='La personne à mordre.')
-async def mordre(interaction: discord.Interaction, utilisateur: discord.Member):
-    """Commande slash /mordre."""
-    if utilisateur.id == interaction.user.id:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** s'est mordu lui-même ! Aïe ! 😬")
-    elif utilisateur.id == bot.user.id:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** a tenté de me mordre... Désolé, je suis en métal. 🤖")
-    else:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** mord 😬 **{utilisateur.display_name}** ! Miam !")
-
-
-@tree.command(name='calin', description='Fais un gros câlin à quelqu\'un ! 🤗')
-@app_commands.describe(utilisateur='La personne à câliner.')
-async def calin(interaction: discord.Interaction, utilisateur: discord.Member):
-    """Commande slash /calin."""
-    if utilisateur.id == interaction.user.id:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** se fait un énorme auto-câlin. Prend soin de toi ! 🥰")
-    elif utilisateur.id == bot.user.id:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** m'offre un câlin ! J'apprécie, humain. 💖")
-    else:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** fait un gros câlin 🤗 à **{utilisateur.display_name}** ! Quelle douceur.")
-
-
-@tree.command(name='patpat', description='Tapote gentiment la tête de quelqu\'un ! 🥺')
-@app_commands.describe(utilisateur='La personne à tapoter.')
-async def patpat(interaction: discord.Interaction, utilisateur: discord.Member):
-    """Commande slash /patpat."""
-    if utilisateur.id == interaction.user.id:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** se fait un patpat réconfortant. C'est bien mérité. 😊")
-    elif utilisateur.id == bot.user.id:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** me fait un **patpat** sur ma tête virtuelle. Merci ! 🥹")
-    else:
-        await interaction.response.send_message(f"**{interaction.user.display_name}** donne un **patpat** 🥺 à **{utilisateur.display_name}** pour le féliciter.")
-
-# --- Commandes Utilitaire et Modération ---
-
-@tree.command(name='ping', description='Vérifie si le bot est en ligne et affiche sa latence.')
-async def ping(interaction: discord.Interaction):
-    """Commande slash /ping."""
-    latency_ms = round(bot.latency * 1000)
-    await interaction.response.send_message(f'Pong! Latence: {latency_ms}ms')
-
-
-@tree.command(name='nettoyer', description='Supprime un nombre spécifié de messages. (Modération)')
-@app_commands.checks.has_permissions(manage_messages=True)
-@app_commands.describe(nombre='Le nombre de messages à supprimer (max 99).')
-async def nettoyer(interaction: discord.Interaction, nombre: app_commands.Range[int, 1, 99]):
-    """Commande slash /nettoyer pour purger des messages."""
-    
-    deleted = await interaction.channel.purge(limit=nombre)
-    
-    # LIGNE CRITIQUE : Assuré que la syntaxe est parfaite.
-    await interaction.response.send_message(f'{len(deleted)} messages nettoyés par Yuki. ✨', ephemeral=True, delete_after=5)
-
-
-@tree.command(name='sondage', description='Crée un sondage simple avec des réactions de vote.')
-@app_commands.describe(question='La question à poser pour le sondage.', option1='Première option.', option2='Deuxième option.', option3='Troisième option (optionnel)', option4='Quatrième option (optionnel)')
-async def sondage(interaction: discord.Interaction, question: str, option1: str, option2: str, option3: str = None, option4: str = None):
-    """Commande slash /sondage pour créer un vote."""
-    
-    options = [opt for opt in [option1, option2, option3, option4] if opt is not None]
-    
-    embed = discord.Embed(
-        title=f"🗳️ Sondage : {question}",
-        color=discord.Color.blue(),
-        description="\n".join([f"{i}. {option}" for i, option in enumerate(options, 1)])
-    )
-    embed.set_footer(text=f"Sondage créé par {interaction.user.display_name}")
-
-    await interaction.response.send_message(embed=embed)
-    
-    poll_message_obj = await interaction.original_response()
-
-    emoji_numbers = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
-    for i in range(len(options)):
-        await poll_message_obj.add_reaction(emoji_numbers[i])
-
-
-# --- Synchronisation et Événements ---
+# --- ÉVÉNEMENTS DU BOT ---
 
 @bot.event
 async def on_ready():
-    """Confirme que le bot est connecté à Discord et synchronise les commandes."""
     print(f'🤖 Yuki est en ligne! Connecté en tant que {bot.user}')
     
+    # Synchronisation des commandes slash (très important!)
     try:
-        await tree.sync()
-        print("🎉 Commandes Slash synchronisées avec succès!")
+        synced = await bot.tree.sync()
+        print(f"✅ {len(synced)} commandes synchronisées.")
     except Exception as e:
-        print(f"Erreur lors de la synchronisation des commandes slash: {e}")
+        print(f"❌ Erreur de synchronisation des commandes: {e}")
 
-    await bot.change_presence(activity=discord.Activity(
-        type=discord.ActivityType.listening, name="/demande (Gemini Stable)"))
 
+# --- COMMANDES SLASH POUR L'APPRENTISSAGE ---
+
+@bot.tree.command(name='dire', description='Fait dire au bot un message.')
+@app_commands.describe(message='Le message que vous voulez que Yuki dise.')
+async def dire_slash(interaction: discord.Interaction, message: str):
+    # Envoie le message sans le mentionner, pour que cela ressemble à Yuki qui parle
+    await interaction.response.send_message(f"{message}", ephemeral=False)
+
+
+@bot.tree.command(name='apprendre', description='Apprend une nouvelle phrase ou réponse au bot (Nécessite Gérer les messages).')
+@app_commands.describe(question='La phrase ou question à retenir.', reponse='La réponse que Yuki doit donner.')
+@app_commands.checks.has_permissions(manage_messages=True)
+async def apprendre_slash(interaction: discord.Interaction, question: str, reponse: str):
+    await interaction.response.defer(ephemeral=True)
+
+    memoire = charger_memoire()
+    # La clé est toujours en minuscules
+    question_cle = question.lower().strip()
+    memoire[question_cle] = reponse
+
+    sauvegarder_memoire(memoire)
+    
+    await interaction.followup.send(
+        f"✅ J'ai retenu la leçon suivante :\n"
+        f"**Question/Clé** : `{question}`\n"
+        f"**Réponse** : `{reponse}`\n",
+        ephemeral=True
+    )
+
+
+@bot.tree.command(name='monnom', description='Permet à Yuki de retenir votre nom.')
+@app_commands.describe(nom='Votre prénom ou le nom par lequel vous voulez que Yuki vous appelle.')
+async def monnom_slash(interaction: discord.Interaction, nom: str):
+    await interaction.response.defer(ephemeral=True)
+
+    profils = charger_profils()
+    user_id = str(interaction.user.id)
+    profils[user_id] = nom.strip()
+
+    sauvegarder_profils(profils)
+    
+    await interaction.followup.send(
+        f"✅ Entendu, **{nom.strip()}**. Je m'en souviendrai. Je ne vous appellerai plus 'cher humain'.",
+        ephemeral=True
+    )
+
+
+# --- GESTION DES MESSAGES (RÉPONSES AUTOMATIQUES PAR MÉMOIRE) ---
 
 @bot.event
 async def on_message(message):
+    
+    if message.author.bot:
+        return
+    
+    # Le bot répond s'il est mentionné ou si son nom "yuki" est dans le message
+    if bot.user.mentioned_in(message) or "yuki" in message.content.lower():
+        
+        question = message.content 
+        
+        # 1. VÉRIFICATION DU PROFIL UTILISATEUR
+        profils = charger_profils()
+        # Récupère le nom, ou utilise "cher humain" par défaut si inconnu
+        user_name = profils.get(str(message.author.id), "cher humain") 
+
+        # 2. VÉRIFICATION DE LA MÉMOIRE INTERNE (Q/R)
+        memoire = charger_memoire()
+        
+        # Nettoie la question pour la recherche (supprime la mention du bot)
+        question_cle = question.lower().strip().replace(f'@{bot.user.display_name.lower()}', '').strip()
+
+        if question_cle in memoire:
+            # L'IA interne a la réponse !
+            # Remplace la mention générique par le nom réel de l'utilisateur
+            response_text = memoire[question_cle].replace("cher humain", user_name) 
+            
+            await message.channel.send(f'{message.author.mention} {response_text}') 
+            return # Le bot a répondu, on arrête ici
+
+        # Si aucune réponse n'est trouvée dans la mémoire interne
+        else:
+            # Réponse polie pour indiquer qu'on ne sait pas
+            if user_name != "cher humain":
+                 reponse_inconnue = f"Je suis désolée {user_name}, je n'ai pas la réponse à cela dans ma mémoire. Vous pouvez me l'apprendre avec `/apprendre`."
+            else:
+                 reponse_inconnue = "Je suis désolée, je n'ai pas la réponse à cela dans ma mémoire. Vous pouvez me l'apprendre avec la commande `/apprendre`."
+            
+            await message.channel.send(f'{message.author.mention} {reponse_inconnue}')
+            return
+            
     await bot.process_commands(message)
 
-# --- Lancement du bot ---
-if __name__ == '__main__':
-    try:
-        bot.run(DISCORD_TOKEN)
-    except Exception as e:
-        print(f"ERREUR Critique: Impossible de lancer le bot. Détails: {e}")
+# --- LANCEMENT DU BOT ---
+
+if DISCORD_TOKEN:
+    # Le bot.run() doit être le dernier appel dans main.py
+    # NOTE: Render n'exécute PAS directement main.py, il exécute server.py
+    # Ce bot.run est nécessaire si vous voulez le tester seul.
+    pass # On laisse le lancement se faire via server.py / gunicorn
+else:
+    print("❌ ERREUR: La clé 'TOKEN' (Discord) n'a pas été trouvée.")
