@@ -1,5 +1,3 @@
 discord.py
-groq
-python-dotenv
 Flask
 gunicorn
