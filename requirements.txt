@@ -1,3 +1,4 @@
 discord.py
 Flask
 gunicorn
+eventlet # Ajouté pour aider à la stabilité du threading/serveur web
