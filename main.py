@@ -5,11 +5,14 @@ import os
 import json 
 import re 
 import random 
-import requests # Nécessaire pour l'API Serper
+import requests 
+import wikipedia # Pour l'accès à Wikipedia
 
 # --- CONFIGURATION DES CLÉS ---
+# Le bot va chercher ces valeurs dans les variables d'environnement de Render.
 DISCORD_TOKEN = os.environ.get("TOKEN")
-SERPER_API_KEY = os.environ.get("SERPER_API_KEY") # Clé pour la recherche web stable
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY") 
+CSE_ID = os.environ.get("CSE_ID") 
 
 # Configuration du bot
 intents = discord.Intents.default()
@@ -23,11 +26,11 @@ KISS_GIFS = [
     "https://media.tenor.com/qL3B_cO9dE0AAAAC/hug-kiss.gif",
     "https://media.tenor.com/qS074J-qKqUAAAAC/couple-cute.gif",
     "https://media.tenor.com/W-b2-v_zYk8AAAAC/kiss-love.gif",
-    # Ajoutez ici d'autres liens de GIF
 ]
 
 
 # --- FONCTIONS POUR LA GESTION DES FICHIERS DE MÉMOIRE ---
+# Assurez-vous que memoire.json et user_profiles.json existent (même vides) dans votre dépôt.
 
 def sauvegarder_memoire(memoire):
     """Sauvegarde le dictionnaire de mémoire dans le fichier memoire.json."""
@@ -55,35 +58,51 @@ def charger_profils():
     except (FileNotFoundError, json.JSONDecodeError):
         return {} 
 
-# --- LOGIQUE DE RECHERCHE STABLE (SERPER API) ---
+# --- FONCTIONS DE RECHERCHE DYNAMIQUE (STABLE) ---
 
-def search_serper(query):
-    """Lance une recherche sur Serper API et renvoie le premier résultat."""
-    if not SERPER_API_KEY:
+def search_wikipedia(query):
+    """Recherche sur Wikipedia en français et renvoie le résumé et le lien."""
+    try:
+        wikipedia.set_lang("fr")
+        page = wikipedia.page(query, auto_suggest=False) 
+        summary = page.content[:400] + ('...' if len(page.content) > 400 else '')
+        return page.title, summary, page.url
+
+    except wikipedia.exceptions.PageError:
+        return None, None, None
+    except wikipedia.exceptions.DisambiguationError:
+        return None, None, None
+    except Exception as e:
+        print(f"Erreur Wikipedia: {e}")
+        return None, None, None
+
+
+def search_google_cse(query):
+    """Lance une recherche via Google Custom Search Engine API."""
+    if not GOOGLE_API_KEY or not CSE_ID:
+        print("Erreur: Clés Google CSE manquantes.")
         return None, None
         
-    url = "https://google.serper.dev/search"
-    payload = json.dumps({"q": query, "gl": "fr", "hl": "fr"})
-    headers = {
-      'X-API-KEY': SERPER_API_KEY,
-      'Content-Type': 'application/json'
+    url = "https://www.googleapis.com/customsearch/v1"
+    params = {
+        'key': GOOGLE_API_KEY,
+        'cx': CSE_ID,
+        'q': query,
+        'num': 1,
+        'hl': 'fr' 
     }
 
     try:
-        response = requests.request("POST", url, headers=headers, data=payload, timeout=5)
+        response = requests.get(url, params=params, timeout=5)
         response.raise_for_status()
         data = response.json()
         
-        if 'organic' in data and data['organic']:
-            first_result = data['organic'][0]
-            # Utilise un nettoyage de base pour s'assurer que le lien est propre
-            link = first_result.get('link').split('&sa=U&')[0] if first_result.get('link') else None
-            return first_result.get('title'), link
+        if 'items' in data and data['items']:
+            first_result = data['items'][0]
+            return first_result.get('title'), first_result.get('link')
             
     except requests.exceptions.RequestException as e:
-        print(f"Erreur de recherche Serper: {e}")
-    except Exception as e:
-        print(f"Erreur de traitement JSON Serper: {e}")
+        print(f"Erreur de recherche Google CSE: {e}")
         
     return None, None
 
@@ -94,7 +113,6 @@ def search_serper(query):
 async def on_ready():
     print(f'🤖 Yuki est en ligne! Connecté en tant que {bot.user}')
     
-    # Synchronisation des commandes slash
     try:
         synced = await bot.tree.sync()
         print(f"✅ {len(synced)} commandes synchronisées.")
@@ -115,7 +133,6 @@ async def apprendre_slash(interaction: discord.Interaction, question: str, repon
 
     sauvegarder_memoire(memoire)
     
-    # Réponse publique
     await interaction.response.send_message(
         f"✅ J'ai retenu la leçon suivante :\n"
         f"**Question/Clé** : `{question}`\n"
@@ -134,7 +151,6 @@ async def monnom_slash(interaction: discord.Interaction, nom: str):
 
     sauvegarder_profils(profils)
     
-    # Réponse publique
     await interaction.response.send_message(
         f"✅ Entendu, **{nom.strip()}**. Je m'en souviendrai. Je ne vous appellerai plus 'cher humain'.",
         ephemeral=False
@@ -150,7 +166,6 @@ async def ping_slash(interaction: discord.Interaction):
 @bot.tree.command(name='dire', description='Fait dire au bot un message public.')
 @app_commands.describe(message='Le message que vous voulez que Yuki dise.')
 async def dire_slash(interaction: discord.Interaction, message: str):
-    # Supprime la commande de l'utilisateur et envoie juste le message
     await interaction.response.send_message(f"**{message}**", ephemeral=False)
 
 @bot.tree.command(name='clear', description='Supprime un nombre spécifié de messages (Nécessite Gérer les messages).')
@@ -188,7 +203,7 @@ async def kiss_slash(interaction: discord.Interaction, membre: discord.Member):
     await interaction.response.send_message(message, embed=embed)
 
 
-# --- GESTION DES MESSAGES (RÉPONSES AUTOMATIQUES PAR MÉMOIRE OU RECHERCHE STABLE) ---
+# --- GESTION DES MESSAGES (PRIORITÉ : Mémoire > Wikipedia > Google CSE) ---
 
 @bot.event
 async def on_message(message):
@@ -228,24 +243,40 @@ async def on_message(message):
             await message.channel.send(f'{user_name} : {response_text}') 
             return 
 
-        # 4. PAS DE RÉPONSE STATIQUE -> RECHERCHE STABLE VIA API SERPER
+        # 4. PAS DE RÉPONSE STATIQUE -> ESSAI WIKIPEDIA
+        
+        await message.channel.send(f"Hum... Je ne connais pas la réponse. Laissez-moi vérifier sur Wikipédia, {user_name}...")
+        
+        title, summary, link = search_wikipedia(question_cle)
+        
+        if link and title:
+            embed = discord.Embed(
+                title=f"📚 Wiki : {title}",
+                description=summary,
+                url=link,
+                color=discord.Color.blue()
+            )
+            await message.channel.send(embed=embed)
+            return
+        
+        # 5. PAS DE RÉPONSE WIKIPEDIA -> ESSAI GOOGLE CSE (Recherche Web Générale)
+        
+        await message.channel.send(f"Pas trouvé sur Wikipédia. Je lance une recherche web, {user_name}...")
+        
+        title, link = search_google_cse(question_cle)
+        
+        if link and title:
+            await message.channel.send(
+                f"J'ai trouvé ceci sur le web ! 🔍\n\n"
+                f"**{title}**\n"
+                f"<{link}>"
+            )
+            return
+
+        # 6. ÉCHEC TOTAL
         else:
-            await message.channel.send(f"Hum... Je ne connais pas la réponse. Laissez-moi chercher ça pour vous, {user_name}...")
-            
-            title, link = search_serper(question_cle) # Appel à l'API Serper
-            
-            if link and title:
-                # Réponse trouvée et structurée
-                await message.channel.send(
-                    f"J'ai trouvé ceci ! 🔍\n\n"
-                    f"**{title}**\n"
-                    f"<{link}>"
-                )
-            else:
-                # Si l'API n'a rien trouvé
-                reponse_inconnue = f"Désolée {user_name}, je n'ai rien trouvé sur internet pour cette requête, et ce n'est pas dans ma mémoire. Vous pouvez me l'apprendre avec `/apprendre`."
-                await message.channel.send(reponse_inconnue)
-            
+            reponse_inconnue = f"Désolée {user_name}, je n'ai rien trouvé d'encyclopédique ni sur le web pour cette requête, et ce n'est pas dans ma mémoire. Vous pouvez me l'apprendre avec `/apprendre`."
+            await message.channel.send(reponse_inconnue)
             return
             
     await bot.process_commands(message)
