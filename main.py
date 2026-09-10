@@ -7,6 +7,7 @@ import re
 import random 
 import requests 
 import wikipedia # Pour l'accès à Wikipedia
+import asyncio
 
 # --- CONFIGURATION DES CLÉS ---
 # Le bot va chercher ces valeurs dans les variables d'environnement de Render.
@@ -30,7 +31,6 @@ KISS_GIFS = [
 
 
 # --- FONCTIONS POUR LA GESTION DES FICHIERS DE MÉMOIRE ---
-# Assurez-vous que memoire.json et user_profiles.json existent (même vides) dans votre dépôt.
 
 def sauvegarder_memoire(memoire):
     """Sauvegarde le dictionnaire de mémoire dans le fichier memoire.json."""
@@ -58,7 +58,8 @@ def charger_profils():
     except (FileNotFoundError, json.JSONDecodeError):
         return {} 
 
-# --- FONCTIONS DE RECHERCHE DYNAMIQUE (STABLE) ---
+
+# --- FONCTIONS DE RECHERCHE DYNAMIQUE (SILENCIEUSE ET SANS MESSAGES INTERMÉDIAIRES) ---
 
 def search_wikipedia(query):
     """Recherche sur Wikipedia en français et renvoie le résumé et le lien."""
@@ -152,9 +153,10 @@ async def monnom_slash(interaction: discord.Interaction, nom: str):
     sauvegarder_profils(profils)
     
     await interaction.response.send_message(
-        f"✅ Entendu, **{nom.strip()}**. Je m'en souviendrai. Je ne vous appellerai plus 'cher humain'.",
+        f"✅ Entendu, **{nom.strip()}**. Je m'en souviendrai.",
         ephemeral=False
     )
+
 
 # --- COMMANDES SLASH DE BASE ---
 
@@ -219,8 +221,6 @@ async def on_message(message):
         profils = charger_profils()
         user_id = str(message.author.id)
         user_name = profils.get(user_id, message.author.display_name)
-        if user_id not in profils:
-             user_name = "cher humain"
 
 
         # 2. NETTOYAGE DE LA QUESTION POUR LA RECHERCHE
@@ -235,49 +235,47 @@ async def on_message(message):
             
         question_cle = question_cle.strip('?!.,:;').strip()
 
+        if not question_cle:
+            return
 
         # 3. VÉRIFICATION DE LA MÉMOIRE STATIQUE (memoire.json)
         memoire = charger_memoire()
         if question_cle in memoire:
-            response_text = memoire[question_cle].replace("cher humain", user_name) 
-            await message.channel.send(f'{user_name} : {response_text}') 
+            response_text = memoire[question_cle]
+            await message.channel.send(f'{response_text}') 
             return 
 
-        # 4. PAS DE RÉPONSE STATIQUE -> ESSAI WIKIPEDIA
-        
-        await message.channel.send(f"Hum... Je ne connais pas la réponse. Laissez-moi vérifier sur Wikipédia, {user_name}...")
-        
-        title, summary, link = search_wikipedia(question_cle)
-        
-        if link and title:
-            embed = discord.Embed(
-                title=f"📚 Wiki : {title}",
-                description=summary,
-                url=link,
-                color=discord.Color.blue()
-            )
-            await message.channel.send(embed=embed)
-            return
-        
-        # 5. PAS DE RÉPONSE WIKIPEDIA -> ESSAI GOOGLE CSE (Recherche Web Générale)
-        
-        await message.channel.send(f"Pas trouvé sur Wikipédia. Je lance une recherche web, {user_name}...")
-        
-        title, link = search_google_cse(question_cle)
-        
-        if link and title:
-            await message.channel.send(
-                f"J'ai trouvé ceci sur le web ! 🔍\n\n"
-                f"**{title}**\n"
-                f"<{link}>"
-            )
-            return
+        # 4. RECHERCHE EN ARRIÈRE-PLAN (SANS MESSAGES INTERMÉDIAIRES)
+        async with message.channel.typing():
+            
+            # Essai Wikipédia
+            title, summary, link = search_wikipedia(question_cle)
+            
+            if link and title:
+                embed = discord.Embed(
+                    title=f"📚 {title}",
+                    description=summary,
+                    url=link,
+                    color=discord.Color.blue()
+                )
+                await message.channel.send(embed=embed)
+                return
+            
+            # Essai Google CSE (Si Wikipédia échoue)
+            title, link = search_google_cse(question_cle)
+            
+            if link and title:
+                await message.channel.send(
+                    f"🔍 **{title}**\n"
+                    f"<{link}>"
+                )
+                return
 
-        # 6. ÉCHEC TOTAL
-        else:
-            reponse_inconnue = f"Désolée {user_name}, je n'ai rien trouvé d'encyclopédique ni sur le web pour cette requête, et ce n'est pas dans ma mémoire. Vous pouvez me l'apprendre avec `/apprendre`."
-            await message.channel.send(reponse_inconnue)
-            return
+            # Échec total de la recherche
+            else:
+                reponse_inconnue = f"Désolée {user_name}, je n'ai rien trouvé pour cette requête sur Wikipédia ou le Web. Tu peux m'apprendre la réponse avec `/apprendre`."
+                await message.channel.send(reponse_inconnue)
+                return
             
     await bot.process_commands(message)
 
