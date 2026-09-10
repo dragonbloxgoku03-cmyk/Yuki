@@ -6,14 +6,18 @@ import json
 import re 
 import random 
 import requests 
-from google import genai
+import google.generativeai as genai
 
 # --- CONFIGURATION DES CLÉS ---
 DISCORD_TOKEN = os.environ.get("TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-# Initialisation du client Gemini
-client_gemini = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+# Initialisation de Gemini
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    model = None
 
 # Configuration du bot Discord
 intents = discord.Intents.default()
@@ -150,21 +154,18 @@ async def on_message(message):
             await message.channel.send(memoire[question_cle]) 
             return 
 
-        # 2. Traitement par Gemini (Modèle gemini-1.5-flash)
+        # 2. Réponse via Gemini AI
         async with message.channel.typing():
-            if client_gemini:
+            if model:
                 try:
-                    prompt = f"Tu es Yuki, un bot Discord utile et amical. Réponds de façon concise à {user_name} : {message.content}"
-                    response = client_gemini.models.generate_content(
-                        model='gemini-1.5-flash',
-                        contents=prompt,
-                    )
+                    prompt = f"Tu es Yuki, un bot Discord utile, amical et concis. Réponds directement à {user_name} : {message.content}"
+                    response = model.generate_content(prompt)
                     await message.channel.send(response.text)
                     return
                 except Exception as e:
                     print(f"Erreur Gemini: {e}")
 
-            await message.channel.send(f"Désolée {user_name}, je n'ai pas pu trouver de réponse. Vérifie ma clé d'API Gemini sur Render.")
+            await message.channel.send(f"Désolée {user_name}, je n'ai pas pu générer de réponse.")
             return
 
     await bot.process_commands(message)
