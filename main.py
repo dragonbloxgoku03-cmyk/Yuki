@@ -12,10 +12,10 @@ from google import genai
 DISCORD_TOKEN = os.environ.get("TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
-# Client Gemini
+# Initialisation du client Gemini
 client_gemini = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
-# Configuration du bot
+# Configuration du bot Discord
 intents = discord.Intents.default()
 intents.message_content = True 
 
@@ -150,13 +150,13 @@ async def on_message(message):
             await message.channel.send(memoire[question_cle]) 
             return 
 
-        # 2. Traitement par Gemini
+        # 2. Traitement par Gemini (Modèle gemini-1.5-flash)
         async with message.channel.typing():
             if client_gemini:
                 try:
                     prompt = f"Tu es Yuki, un bot Discord utile et amical. Réponds de façon concise à {user_name} : {message.content}"
                     response = client_gemini.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-1.5-flash',
                         contents=prompt,
                     )
                     await message.channel.send(response.text)
@@ -164,10 +164,15 @@ async def on_message(message):
                 except Exception as e:
                     print(f"Erreur Gemini: {e}")
 
-            await message.channel.send(f"Désolée {user_name}, je n'ai pas pu trouver de réponse.")
+            await message.channel.send(f"Désolée {user_name}, je n'ai pas pu trouver de réponse. Vérifie ma clé d'API Gemini sur Render.")
             return
 
     await bot.process_commands(message)
 
-if DISCORD_TOKEN is None:
-    print("❌ AVERTISSEMENT: La clé 'TOKEN' n'a pas été trouvée.")
+# --- LANCEMENT SÉCURISÉ ---
+
+if __name__ == "__main__":
+    if DISCORD_TOKEN:
+        bot.run(DISCORD_TOKEN)
+    else:
+        print("❌ AVERTISSEMENT: La clé 'TOKEN' n'a pas été trouvée dans les variables d'environnement.")
