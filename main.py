@@ -279,7 +279,10 @@ async def on_message(message):
             
     await bot.process_commands(message)
 
-# --- LANCEMENT DU BOT (DÉCLENCHÉ PAR server.py) ---
+# --- LANCEMENT DU BOT (DÉCLENCHÉ PAR server.py OU DIRECTEMENT) ---
 
-if DISCORD_TOKEN is None:
-    print("❌ AVERTISSEMENT: La clé 'TOKEN' (Discord) n'a pas été trouvée lors de l'importation de main.py.")
+if __name__ == "__main__":
+    if DISCORD_TOKEN:
+        bot.run(DISCORD_TOKEN)
+    else:
+        print("❌ AVERTISSEMENT: La clé 'TOKEN' (Discord) n'a pas été trouvée dans les variables d'environnement.")
