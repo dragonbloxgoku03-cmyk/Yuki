@@ -4,4 +4,4 @@ gunicorn
 gevent
 requests
 wikipedia
-pip install google-genai
+google-genai
