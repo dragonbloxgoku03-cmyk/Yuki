@@ -1,7 +1,3 @@
 discord.py
-Flask
-gunicorn
-gevent
 requests
-wikipedia
-google-genai
+google-generativeai
